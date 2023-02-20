@@ -4,7 +4,7 @@ from numpy.typing import NDArray
 import numpy as np
 
 ARC_SECONDS_TO_RADIANS = np.pi / 648000
-EARTH_ROTATION_DERIVATIVE = 1.00273781191135448 / 86400 
+EARTH_ROTATION_DERIVATIVE = np.pi * 1.00273781191135448 / 43200 
 DERIVATIVE_MATRIX = np.array([
     [0.0, -EARTH_ROTATION_DERIVATIVE, 0.0], 
     [EARTH_ROTATION_DERIVATIVE, 0.0, 0.0], 
@@ -104,17 +104,16 @@ def rotation_matrix_ecef_to_eci(
     Args:
         julian_date (float): Time in Julian centuries.
 
-
     Returns:
         rotation_matrx (NDArray[float]): 3x3 Matrix to rotate ECEF to ECI
     """
     # Angular motion of the earth
-    earth_rotation_angle = np.pi * (
+    earth_rotation_angle = 2 * np.pi * (
         0.7790572732640 + 1.00273781191135448 * 36525.0 * julian_century
     )
     earth_matrix = np.eye(3)
     earth_matrix[0, 0] = earth_matrix[1, 1] = np.cos(earth_rotation_angle)
-    earth_matrix[1, 0] = np.sin(earth_matrix)
+    earth_matrix[1, 0] = np.sin(earth_rotation_angle)
     earth_matrix[0, 1] = -1 * earth_matrix[1, 0]
 
     # Precession / Nutation rotation matrix (Eq. 5.10)
@@ -141,8 +140,8 @@ def compute_celestial_positions(
         julian_date (float): Time in Julian centuries.
 
     Returns:
-        celestial_x (float): x-component of the pole vector
-        celestial_y (float): y-component of the pole vector
+        celestial_x (float): x-component of the pole vector in radians
+        celestial_y (float): y-component of the pole vector in radians
 
     Notes:
         See Equation 5.16 with Table 5.2a / 5.2b. Supplemental material has
@@ -200,7 +199,7 @@ def utc_time_to_julian_date(
     # update with the frational day
     julian_date +=  (
         utc_time.hour + utc_time.minute / 60 
-        + (utc_time.second  + 1e-6 * utc_time.microsecond) / 3600 
+        + (utc_time.second + 1e-6 * utc_time.microsecond) / 3600 
     ) / 24
 
     return julian_date
