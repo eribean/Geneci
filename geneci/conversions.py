@@ -3,8 +3,93 @@ from datetime import datetime
 from numpy.typing import NDArray
 import numpy as np
 
-ARC_SECONDS_TO_RADIANS = np.pi / 180 / 3600
-DERIVATIVE_CONSTANT = 1.00273781191135448 / 3600 / 24  
+ARC_SECONDS_TO_RADIANS = np.pi / 648000
+EARTH_ROTATION_DERIVATIVE = 1.00273781191135448 / 86400 
+DERIVATIVE_MATRIX = np.array([
+    [0.0, -EARTH_ROTATION_DERIVATIVE, 0.0], 
+    [EARTH_ROTATION_DERIVATIVE, 0.0, 0.0], 
+    [0.0, 0.0, 0.0]
+])
+
+
+def eci_to_ecef(
+    eci_point: NDArray[np.float64],
+    utc_time: datetime,
+    eci_velocity: None | NDArray[np.float64] = None
+) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Convert ECI point/velocity to ECEF point/velocity.
+
+    Args:
+        eci_point (NDArray[np.float64]): (3,) 1-d vector describing ECI point [X, Y, Z]
+        utc_time (datetime): Observed time of position and/or velocity
+        eci_velocity (NDArray[np.float64]): (3,) 1-d vector describing ECI velocity [Vx, Vy, Vz]
+
+    Returns:
+        ecef_point (NDArray[np.float64]): (3,) 1-d vector describing ECEF point [X, Y, Z]
+        ecef_velocity (NDArray[np.float64]): (3,) 1-d vector describing ECEF velocity [Vx, Vy, Vz]
+
+    Note:
+        The velocity is only returned if a velocity is supplied
+    """
+    # Convert the utc time to julian day, then to century
+    julian_day = utc_time_to_julian_date(utc_time)
+    julian_century = (julian_day - 2451545.0) / 36525.0 # Eq. 5.2
+
+    # Get the rotation matrix
+    rotation_ecef_to_eci = rotation_matrix_ecef_to_eci(julian_century)
+
+    # Rotate the position
+    ecef_point = rotation_ecef_to_eci.T @ eci_point
+
+    # Rotate the velocity if it is supplied
+    if eci_velocity is not None:
+        ecef_velocity = (
+            rotation_ecef_to_eci.T @ eci_velocity 
+            + (rotation_ecef_to_eci @ DERIVATIVE_MATRIX).T @ eci_point
+        )
+        return ecef_point, ecef_velocity
+
+    return ecef_point
+
+
+def ecef_to_eci(
+    ecef_point: NDArray[np.float64],
+    utc_time: datetime,
+    ecef_velocity: NDArray[np.float64] = None
+) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Convert ECEF point/velocity to ECI point/velocity.
+    
+    Args:
+        ecef_point (NDArray[np.float64]): (3,) 1-d vector describing ECEF point [X, Y, Z]
+        utc_time (datetime): Observed time of position and/or velocity
+        eci_velocity (NDArray[np.float64]): (3,) 1-d vector describing ECI velocity [Vx, Vy, Vz]
+
+    Returns:
+        eci_point (NDArray[np.float64]): (3,) 1-d vector describing ECI point [X, Y, Z]
+        ecef_velocity (NDArray[np.float64]): (3,) 1-d vector describing ECEF velocity [Vx, Vy, Vz]
+
+    Note:
+        The velocity is only returned if a velocity is supplied
+    """
+    # Convert the utc time to julian day, then to century
+    julian_day = utc_time_to_julian_date(utc_time)
+    julian_century = (julian_day - 2451545.0) / 36525.0 # Eq. 5.2
+
+    # Get the rotation matrix
+    rotation_ecef_to_eci = rotation_matrix_ecef_to_eci(julian_century)
+
+    # Rotate the position
+    eci_point = rotation_ecef_to_eci @ ecef_point
+
+    # Rotate the velocity if it is supplied
+    if ecef_velocity is not None:
+        eci_velocity = (
+            rotation_ecef_to_eci @ ecef_velocity 
+            + (rotation_ecef_to_eci @ DERIVATIVE_MATRIX) @ ecef_point
+        )
+        return eci_point, eci_velocity
+
+    return eci_point
 
 
 def rotation_matrix_ecef_to_eci(
@@ -12,10 +97,9 @@ def rotation_matrix_ecef_to_eci(
 ) -> NDArray[np.float64]:
     """Return ecef to eci rotation matrix for a given time.
 
-    Calculation is
+    Rotation is applied to the vector components.
 
     P_eci = R(t) @ P_ecef
-
 
     Args:
         julian_date (float): Time in Julian centuries.
@@ -67,13 +151,13 @@ def compute_celestial_positions(
     celestial_x = precession_x(julian_century)
     celestial_y = precession_y(julian_century)
 
-    # Update for nutation (Coeffients are micro-arc-seconds)
+    # Update for nutation (Coeffients are micro arc-seconds)
     omega = moon_ascension(julian_century) * ARC_SECONDS_TO_RADIANS
     D =  moon_elongation(julian_century) * ARC_SECONDS_TO_RADIANS
     F = moon_longitude(julian_century) * ARC_SECONDS_TO_RADIANS
     l_prime = sun_anomoly(julian_century) * ARC_SECONDS_TO_RADIANS
 
-    # Precompute reoccuring arguments
+    # Precompute reoccuring argument
     f_omega_d = 2 * (F + omega - D)
 
     celestial_x += 1e-6 * ((
