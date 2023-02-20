@@ -36,16 +36,16 @@ def eci_to_ecef(
     julian_century = (julian_day - 2451545.0) / 36525.0 # Eq. 5.2
 
     # Get the rotation matrix
-    rotation_ecef_to_eci = rotation_matrix_ecef_to_eci(julian_century)
+    rotation_eci_to_ecef = rotation_matrix_ecef_to_eci(julian_century).T
 
     # Rotate the position
-    ecef_point = rotation_ecef_to_eci.T @ eci_point
+    ecef_point = rotation_eci_to_ecef @ eci_point
 
     # Rotate the velocity if it is supplied
     if eci_velocity is not None:
         ecef_velocity = (
-            rotation_ecef_to_eci.T @ eci_velocity 
-            + (rotation_ecef_to_eci @ DERIVATIVE_MATRIX).T @ eci_point
+            rotation_eci_to_ecef @ eci_velocity 
+            - (DERIVATIVE_MATRIX @ rotation_eci_to_ecef) @ eci_point
         )
         return ecef_point, ecef_velocity
 
@@ -62,11 +62,11 @@ def ecef_to_eci(
     Args:
         ecef_point (NDArray[np.float64]): (3,) 1-d vector describing ECEF point [X, Y, Z]
         utc_time (datetime): Observed time of position and/or velocity
-        eci_velocity (NDArray[np.float64]): (3,) 1-d vector describing ECI velocity [Vx, Vy, Vz]
+        ecef_velocity (NDArray[np.float64]): (3,) 1-d vector describing ECEF velocity [Vx, Vy, Vz]
 
     Returns:
         eci_point (NDArray[np.float64]): (3,) 1-d vector describing ECI point [X, Y, Z]
-        ecef_velocity (NDArray[np.float64]): (3,) 1-d vector describing ECEF velocity [Vx, Vy, Vz]
+        eci_velocity (NDArray[np.float64]): (3,) 1-d vector describing ECI velocity [Vx, Vy, Vz]
 
     Note:
         The velocity is only returned if a velocity is supplied
