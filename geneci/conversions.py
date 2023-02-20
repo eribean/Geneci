@@ -7,20 +7,6 @@ ARC_SECONDS_TO_RADIANS = np.pi / 180 / 3600
 DERIVATIVE_CONSTANT = 1.00273781191135448 / 3600 / 24  
 
 
-def utc_time_to_julian_date(
-    utc_time: datetime
-) -> float:
-    """Convert UTC time to Julian date.
-
-    Args:
-        utc_time (datetime): The observation time as a datetime object
-
-    Returns:
-        julian_date (float): The observation time as a julian date.
-    """
-    pass
-
-
 def rotation_matrix_ecef_to_eci(
     julian_century: float
 ) -> NDArray[np.float64]:
@@ -107,6 +93,33 @@ def compute_celestial_positions(
     ))
 
     return celestial_x * ARC_SECONDS_TO_RADIANS, celestial_y * ARC_SECONDS_TO_RADIANS
+
+
+def utc_time_to_julian_date(
+    utc_time: datetime
+) -> float:
+    """Convert UTC time to Julian date.
+
+    This calculation is only valid for days after March 1900.
+
+    Args:
+        utc_time (datetime): The observation time as a datetime object
+
+    Returns:
+        julian_date (float): The observation time as a julian date.
+    """
+    year, month, day = utc_time.year, utc_time.month, utc_time.day
+    julian_date = (
+        367 * year - 7 * (year + (month + 9) // 12) // 4 + 275 * month // 9 + day + 1721013.5
+    )
+
+    # update with the frational day
+    julian_date +=  (
+        utc_time.hour + utc_time.minute / 60 
+        + (utc_time.second  + 1e-6 * utc_time.microsecond) / 3600 
+    ) / 24
+
+    return julian_date
 
 
 ## Precession Polynomials (Arc-Seconds)
